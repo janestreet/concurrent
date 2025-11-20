@@ -2,7 +2,7 @@ open Base
 open Async
 open Await
 
-[@@@alert "-experimental"]
+[@@@alert "-experimental_runtime5"]
 
 let scheduler ?monitor ?priority () =
   let open struct
@@ -60,6 +60,14 @@ let[@inline] schedule_with_concurrent ?monitor ?priority terminator ~f =
         Concurrent.create await ~scheduler:(scheduler ?monitor ?priority ())
       in
       f concurrent [@nontail])
+;;
+
+let[@inline] spawn_deferred s ~f =
+  Concurrent.spawn_onto_initial s ~f:(fun s c t ->
+    Await_in_async.await_deferred
+      (Concurrent.await t)
+      ((f [@inlined hint]) s c t) [@nontail])
+  [@nontail]
 ;;
 
 module Portable = struct

@@ -13,9 +13,13 @@ val scheduler : unit Concurrent.Scheduler.t
     onto domains, using [await] as the implementation of awaiting *)
 val create : Await.t @ local portable -> unit Concurrent.t @ local portable
 
-(** [with_concurrent terminator ~f] calls [f] with an implementation of concurrency that
-    spawns preemptively scheduled threads onto arbitrary (managed) domains. *)
-val with_concurrent
+(** [with_blocking terminator ~f] calls [f] with an implementation of concurrency that
+    spawns preemptively scheduled threads onto arbitrary (managed) domains.
+
+    All scopes created using this implementation of concurrency block the calling thread
+    using {!Await_blocking}. If you rely on this thread to run the [Async] scheduler,
+    instead call {!create} with an implementation of awaiting from {!Await_in_async}. *)
+val with_blocking
   :  Terminator.t @ local
   -> f:(unit Concurrent.t @ local portable -> 'r) @ local once
   -> 'r

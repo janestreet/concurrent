@@ -10,7 +10,7 @@ let rec spawn : type r a. (r, a, unit) Concurrent.spawn_fn =
         (* Always record backtraces in concurrent threads *)
         Stdlib.Printexc.record_backtrace true;
         Scope.Token.use token ~f:(fun terminator scope ->
-          with_concurrent terminator ~f:(fun [@inline] c -> f scope () c r [@nontail])
+          with_blocking terminator ~f:(fun [@inline] c -> f scope () c r [@nontail])
           [@nontail])
         [@nontail])
       ({ many = Scope.add scope }, r)
@@ -25,7 +25,7 @@ and[@inline] create await = exclave_
     await
     ~scheduler:((Concurrent.Scheduler.create [@mode portable]) ~spawn)
 
-and[@inline] with_concurrent
+and[@inline] with_blocking
   : 'r.
   Terminator.t @ local -> f:(unit Concurrent.t @ local portable -> 'r) @ local once -> 'r
   =

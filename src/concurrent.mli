@@ -11,7 +11,9 @@ module Scope = Scope
     The ['concurrent_ctx] type parameter is the per-task context type - a value of type
     ['concurrent_ctx] will be passed in [@ local] as the second argument to each spawned
     task. *)
-type 'concurrent_ctx t : value mod contended
+type 'concurrent_ctx t : value mod contended non_float
+
+type packed = T : 'concurrent_ctx t -> packed [@@unboxed]
 
 (** [await t] is the implementation of awaiting associated with the implementation of
     concurrency [t] *)
@@ -38,7 +40,9 @@ module Scheduler : sig
 
   (** [Scheduler.t] is the type representing a handle to a concurrent scheduler. A handle
       to the scheduler allows spawning unstructured concurrent tasks. *)
-  type 'ctx t : value mod contended
+  type 'ctx t : value mod aliased contended non_float
+
+  type packed = T : 'ctx t -> packed [@@unboxed]
 
   (** [create ~spawn] creates a new scheduler with the given spawn function. *)
   val%template create
@@ -146,7 +150,10 @@ module Spawn : sig
       2. ['concurrent_ctx] is the type of the context associated with the {!Concurrent.t}
          that the {!Spawn.t} is associated with, if any, and is passed to all spawned
          tasks [@ local] *)
-  type ('scope_ctx, 'concurrent_ctx) t : value mod contended
+  type ('scope_ctx, 'concurrent_ctx) t : value mod contended non_float
+
+  type 'scope_ctx packed = T : ('scope_ctx, 'concurrent_ctx) t -> 'scope_ctx packed
+  [@@unboxed]
 
   [%%template:
   [@@@mode.default p = (portable, nonportable)]
@@ -159,6 +166,14 @@ module Spawn : sig
     'concurrent_ctx concurrent @ local p
     -> scope:'scope_ctx Scope.t @ local
     -> ('scope_ctx, 'concurrent_ctx) t @ local p]
+
+  (** [with_scheduler s scheduler] is a capability providing the ability to [spawn] tasks
+      guarded by the scope associated with [s], but running on the concurrent scheduler
+      [scheduler] *)
+  val with_scheduler
+    :  ('scope_ctx, _) t @ local
+    -> 'concurrent_ctx Scheduler.t @ local
+    -> ('scope_ctx, 'concurrent_ctx) t @ local
 
   (** [concurrent t] is the implementation of concurrency associated with [t]. *)
   val concurrent
@@ -175,7 +190,7 @@ module Spawn : sig
   val scope : ('scope_ctx, 'concurrent_ctx) t @ local -> 'scope_ctx Scope.t @ local
 
   (** [context t] is [Scope.context (scope t)]. *)
-  val context : ('scope_ctx, _) t -> 'scope_ctx @ contended local portable
+  val context : ('scope_ctx, _) t @ local -> 'scope_ctx @ contended local portable
 
   (** [terminator t] is [Scope.terminator (scope t)]. *)
   val terminator : (_, _) t @ local -> Terminator.t @ local

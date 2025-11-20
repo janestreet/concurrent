@@ -20,19 +20,6 @@ open Await
         [@nontail])
     ]} *)
 
-(** [scheduler ?monitor ?priority ()] is a handle that allows spawning concurrent tasks in
-    the Async scheduler. *)
-val scheduler
-  :  ?monitor:Monitor.t
-  -> ?priority:Priority.t
-  -> unit
-  -> Capsule.Initial.k Capsule.Access.boxed Concurrent.Scheduler.t
-[@@alert
-  experimental
-    "Effects are not supported in the OCaml 4 runtime, and breaking runtime4 builds does \
-     not block continuous release. Please refrain from using effects until the 4 runtime \
-     has been deprecated."]
-
 (** [schedule_with_concurrent terminator ~f] schedules [f conc] to be run on the async
     scheduler, where [conc] is an implementation of concurrency which spawns tasks onto
     the async scheduler. The tasks are given {{!Capsule.Access.t} access} to the
@@ -46,11 +33,26 @@ val schedule_with_concurrent
   -> Terminator.t @ local
   -> f:(Capsule.Initial.k Capsule.Access.boxed Concurrent.t @ local -> 'a) @ once
   -> 'a Deferred.t
-[@@alert
-  experimental
-    "Effects are not supported in the OCaml 4 runtime, and breaking runtime4 builds does \
-     not block continuous release. Please refrain from using effects until the 4 runtime \
-     has been deprecated."]
+
+(** [scheduler ?monitor ?priority ()] is a handle that allows spawning concurrent tasks in
+    the Async scheduler. *)
+val scheduler
+  :  ?monitor:Monitor.t
+  -> ?priority:Priority.t
+  -> unit
+  -> Capsule.Initial.k Capsule.Access.boxed Concurrent.Scheduler.t
+
+(** [spawn_deferred spawn ~f] spawns a deferred-returning task executing
+    [f scope access concurrent] using [spawn] *)
+val spawn_deferred
+  :  ('scope_ctx, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Spawn.t @ local
+  -> f:
+       ('scope_ctx Scope.t @ local
+        -> Capsule.Initial.k Capsule.Access.boxed @ local
+        -> Capsule.Initial.k Capsule.Access.boxed Concurrent.t @ local
+        -> unit Deferred.t)
+     @ once
+  -> unit
 
 (** Capabilities for submitting jobs to the async scheduler from other threads *)
 module Portable : sig
@@ -100,9 +102,4 @@ module Portable : sig
   val scheduler
     :  unit
     -> Capsule.Initial.k Capsule.Access.boxed Concurrent.Scheduler.t @ portable
-  [@@alert
-    experimental
-      "Effects are not supported in the OCaml 4 runtime, and breaking runtime4 builds \
-       does not block continuous release. Please refrain from using effects until the 4 \
-       runtime has been deprecated."]
 end

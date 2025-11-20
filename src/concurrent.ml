@@ -33,10 +33,14 @@ and ('scope_ctx, 'concurrent_ctx) spawn =
   ; concurrent : 'concurrent_ctx t
   }
 
+type packed = T : 'concurrent_ctx t -> packed [@@unboxed]
+
 module Scheduler = struct
   type 'ctx t = 'ctx scheduler =
     { spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn }
   [@@unboxed]
+
+  type packed = T : 'ctx t -> packed [@@unboxed]
 
   let%template create
     ~(spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, _) spawn_fn @ l)
@@ -86,8 +90,15 @@ module Spawn = struct
     }
   [@@deriving fields ~getters]
 
+  type 'scope_ctx packed = T : ('scope_ctx, 'concurrent_ctx) t -> 'scope_ctx packed
+  [@@unboxed]
+
   let%template create concurrent ~scope = exclave_ { scope; concurrent }
   [@@mode p = (portable, nonportable)]
+  ;;
+
+  let with_scheduler { scope; concurrent } scheduler = exclave_
+    { scope; concurrent = { concurrent with scheduler } }
   ;;
 
   let await t = exclave_ await (concurrent t)
@@ -218,11 +229,11 @@ end
    - Each function [spawn]ed into a scope either runs to completion, or raises
    - If any function is [spawn]ed into a scope, the entire scope raises
    - [with_scope] does not return until all functions [spawn]ed into the scope return or
-   raise.
+     raise.
 
    In each spawn_join function, iter, and map, we must ensure:
    - each result (either [Unsafe_result.t] or, in the case of [map],
-   [Unsafe_result.Array.t]) is filled within a task spawned into the scope
+     [Unsafe_result.Array.t]) is filled within a task spawned into the scope
    - We don't call [racy_get] until after the scope is finished
 *)
 
