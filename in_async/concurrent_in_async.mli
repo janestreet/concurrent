@@ -2,7 +2,7 @@ open! Core
 open Async
 open Await
 
-(** An implementation of concurrency that uses {!Async} to spawn concurrent tasks
+(** An implementation of concurrency that uses {!Async} to spawn concurrent tasks.
 
     {1 Example}
 
@@ -18,7 +18,12 @@ open Await
           Concurrent.spawn_onto_initial s ~f:(fun _ _ _c ->
             Ivar.fill_exn result "hello from another concurrent task"))
         [@nontail])
-    ]} *)
+    ]}
+
+    The {{!Concurrent.with_options} spawn options} are interpreted as follows:
+
+    - [affinity]: Ignored
+    - [name]: Ignored *)
 
 (** [schedule_with_concurrent terminator ~f] schedules [f conc] to be run on the async
     scheduler, where [conc] is an implementation of concurrency which spawns tasks onto

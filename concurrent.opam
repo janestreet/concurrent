@@ -18,7 +18,6 @@ depends: [
   "portable"
   "ppx_debug_assert"
   "ppx_jane"
-  "unique"
   "base-threads"
   "dune"             {>= "3.17.0"}
 ]

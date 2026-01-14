@@ -2,18 +2,24 @@ open Base
 open Await
 module Expert = Multicore
 
-let rec spawn : type r a. (r, a, unit) Concurrent.spawn_fn =
-  fun scope ~f r ->
+let rec spawn : type r a. (r, a, unit) Concurrent.Scheduler.spawn_fn =
+  fun scope #{ fn; name; affinity } resource ->
+  let spawn =
+    match affinity with
+    | Null -> Expert.spawn
+    | This domain -> Expert.spawn_on ~domain:(domain % Expert.max_domains ())
+  in
   match
-    Expert.spawn
+    spawn
       (fun ({ many = token }, r) ->
         (* Always record backtraces in concurrent threads *)
         Stdlib.Printexc.record_backtrace true;
+        Or_null.iter name ~f:Thread.set_current_thread_name;
         Scope.Token.use token ~f:(fun terminator scope ->
-          with_blocking terminator ~f:(fun [@inline] c -> f scope () c r [@nontail])
+          with_blocking terminator ~f:(fun [@inline] c -> fn scope () c r [@nontail])
           [@nontail])
         [@nontail])
-      ({ many = Scope.add scope }, r)
+      ({ many = Scope.add scope }, resource)
   with
   | Spawned -> Spawned
   | Failed (({ many = token }, r), exn, bt) ->
@@ -30,8 +36,7 @@ and[@inline] with_blocking
   Terminator.t @ local -> f:(unit Concurrent.t @ local portable -> 'r) @ local once -> 'r
   =
   fun terminator ~f ->
-  Await_blocking.with_await terminator ~f:(fun await -> f (create await) [@nontail])
-  [@nontail]
+  f (create (Await_blocking.await (Terminator.Expert.globalize terminator))) [@nontail]
 ;;
 
 let scheduler = (Concurrent.Scheduler.create [@mode portable]) ~spawn

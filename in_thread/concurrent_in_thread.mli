@@ -3,7 +3,14 @@
 open Base
 open Await
 
-(** An implementation of concurrency which spawns tasks as systhreads onto domains *)
+(** An implementation of concurrency that spawns tasks as systhreads onto domains.
+
+    The {{!Concurrent.with_options} spawn options} are interpreted as follows:
+
+    - [affinity]: Selects the domain to spawn onto, modulo the {{!Multicore.max_domains}
+      maximum number of domains}.
+    - [name]: Sets the name of the spawned thread using [pthread_setname_np]. Names are
+      limited to 15 characters on Linux - any longer names will be truncated. *)
 
 (** [scheduler] is a concurrent scheduler which spawns tasks as systhreads onto domains,
     using [await] as the implementation of awaiting *)
