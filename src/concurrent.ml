@@ -1,6 +1,6 @@
 open Base
 open Await
-module Scope = Scope
+module Scope = Await.Scope
 open Types
 
 type 'concurrent_ctx t = 'concurrent_ctx concurrent =
@@ -8,6 +8,8 @@ type 'concurrent_ctx t = 'concurrent_ctx concurrent =
   ; scheduler : 'concurrent_ctx scheduler
   }
 [@@deriving fields ~getters]
+
+let sync t = exclave_ Await.sync (await t)
 
 module Spawn = struct
   type ('scope_ctx, 'concurrent_ctx) t = ('scope_ctx, 'concurrent_ctx) spawn =
@@ -39,8 +41,9 @@ end
 let create await ~scheduler = exclave_ { await; scheduler }
 let into_scope concurrent scope = exclave_ Spawn.(create [@mode p]) concurrent ~scope
 
-let with_scope t b ~f =
-  Scope.with_ t.await b ~f:(fun scope -> f ((into_scope [@mode p]) t scope) [@nontail])
+let with_scope { await; scheduler } b ~f =
+  Scope.with_ await b ~f:(fun await scope ->
+    f ((into_scope [@mode p]) { await; scheduler } scope) [@nontail])
   [@nontail]
 ;;]
 
@@ -67,13 +70,13 @@ module Scheduler = struct
     ('resource, 'scope_ctx, 'concurrent_ctx) Types.spawn_fn
 
   type 'ctx t = 'ctx scheduler =
-    { spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn }
+    { spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn @@ unyielding }
   [@@unboxed] [@@deriving fields ~getters]
 
   type packed = T : 'ctx t -> packed [@@unboxed]
 
   let%template create
-    ~(spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, _) spawn_fn @ l)
+    ~(spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, _) spawn_fn @ l unyielding)
     =
     { spawn } [@exclave_if_stack a]
   [@@alloc a @ l = (heap_global, stack_local)] [@@mode p = (portable, nonportable)]
@@ -150,7 +153,7 @@ module Unsafe_result : sig @@ portable
   val racy_get : 'a t -> 'a @ contended portable
 
   module Array : sig
-    type 'a t : value mod contended portable
+    type ('a : value mod non_float) t : value mod contended portable
 
     val make : len:int -> 'a t
 
@@ -158,12 +161,13 @@ module Unsafe_result : sig @@ portable
 
         - With an index that is out-of-bounds for the array
         - Concurrently with any other threads calling [racy_fill] on the same index, or
-          calling [racy_get] at all *)
+          calling [racy_get] at all
+        - With the return value of [racy_get] accessible anywhere *)
     val racy_fill : 'a t -> int -> 'a @ contended portable -> unit
 
     (** SAFETY: This function is unsafe to call without ensuring that {i all} indices of
         the array have been filled by [racy_fill] {i before} it is called *)
-    val racy_get : 'a t -> 'a Iarray.t @ contended portable
+    val racy_get_promise_no_mutation : 'a t -> 'a Iarray.t @ contended portable
   end
 end = struct
   type 'a t : value mod contended portable =
@@ -173,33 +177,33 @@ end = struct
   let make () = { contents = Null }
   let racy_fill t a = t.contents <- This a
 
-  external unsafe_assume_init
+  external unsafe_assume_init_promise_no_mutation
     :  'a or_null @ contended portable
     -> 'a @ contended portable
     @@ portable
     = "%identity"
 
-  let racy_get t = unsafe_assume_init t.contents
+  let racy_get t = unsafe_assume_init_promise_no_mutation t.contents
 
   module Array = struct
-    type 'a t : value mod contended portable =
-      { array : 'a portended or_null Uniform_array.t }
+    type ('a : value mod non_float) t : value mod contended portable =
+      { array : 'a portended or_null Array.t }
     [@@unboxed]
     [@@unsafe_allow_any_mode_crossing (* See SAFETY comments in the interface *)]
 
-    let make ~len = { array = Uniform_array.create ~len Null }
-
-    let racy_fill { array } i a =
-      Uniform_array.unsafe_set array i (This { portended = a })
+    let make (type a : value mod non_float) ~len =
+      { array = Array.init len ~f:(fun _ : a portended or_null -> Null) }
     ;;
+
+    let racy_fill { array } i a = Array.unsafe_set array i (This { portended = a })
 
     external unsafe_assume_init
       :  'a t
       -> 'a Iarray.t @ contended portable
       @@ portable
-      = "%obj_magic"
+      = "%array_to_iarray"
 
-    let racy_get t = unsafe_assume_init t
+    let racy_get_promise_no_mutation t = unsafe_assume_init t
   end
 end
 
@@ -236,7 +240,7 @@ module Task = struct
      In each spawn_join function, iter, and map, we must ensure:
      - each result (either [Unsafe_result.t] or, in the case of [map],
        [Unsafe_result.Array.t]) is filled within a task spawned into the scope
-     - We don't call [racy_get] until after the scope is finished
+     - We don't call [racy_get_promise_no_mutation] until after the scope is finished
   *)
 
   let[@inline] racy_wrap_task result (task : _ t) =
@@ -334,7 +338,7 @@ module Task = struct
                let result = (fn [@inlined hint]) s c t in
                Unsafe_result.Array.racy_fill results idx result))
         done);
-      Unsafe_result.Array.racy_get results)
+      Unsafe_result.Array.racy_get_promise_no_mutation results)
   ;;
 
   let spawn_join_n t b ~n ~f =
@@ -352,7 +356,7 @@ module Task = struct
                let result = (fn [@inlined hint]) s c t in
                Unsafe_result.Array.racy_fill results i result))
         done);
-      Unsafe_result.Array.racy_get results)
+      Unsafe_result.Array.racy_get_promise_no_mutation results)
   ;;]
 
   let spawn_nonportable ~access s t =
@@ -371,9 +375,7 @@ module Task = struct
        }
   ;;
 
-  let spawn_onto_initial s t =
-    spawn_nonportable ~access:Capsule.(Access.unbox Initial.access) s t
-  ;;
+  let spawn_onto_initial s t = spawn_nonportable ~access:Capsule.Initial.access s t
 end
 
 type packed = T : 'concurrent_ctx concurrent -> packed [@@unboxed]
@@ -395,9 +397,7 @@ let spawn_nonportable ~access s ~f =
   [@nontail]
 ;;
 
-let spawn_onto_initial s ~f =
-  spawn_nonportable ~access:(Capsule.Access.unbox Capsule.Expert.initial) s ~f
-;;
+let spawn_onto_initial s ~f = spawn_nonportable ~access:Capsule.Initial.access s ~f
 
 [%%template
 [@@@mode.default p = (portable, nonportable)]

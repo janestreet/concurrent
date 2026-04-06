@@ -19,6 +19,10 @@ type packed = T : 'concurrent_ctx t -> packed [@@unboxed]
     concurrency [t] *)
 val await : 'concurrent_ctx t @ local -> Await.t @ local
 
+(** [sync t] is the implementation of synchronizing associated with the implementation of
+    concurrency [t] *)
+val sync : 'concurrent_ctx t @ local -> Sync.t @ local
+
 (** {1 Structured concurrency} *)
 
 (** {2 Spawning and waiting on one or more tasks} *)
@@ -142,7 +146,8 @@ val spawn_join5
     is the 0-based index of the task, waits for them all to return, and returns an iarray
     containing the results. *)
 val spawn_join_n
-  :  'concurrent_ctx t @ local p
+  : ('a : value mod non_float).
+  'concurrent_ctx t @ local p
   -> 'scope_ctx @ portable
   -> n:int
   -> f:
@@ -207,7 +212,7 @@ module Scope = Scope
 val with_scope
   :  'concurrent_ctx t @ local p
   -> 'scope_ctx @ portable
-  -> f:(('scope_ctx, 'concurrent_ctx) spawn @ local p -> 'r) @ local once
+  -> f:(('scope_ctx, 'concurrent_ctx) spawn @ local p -> 'r) @ local once unyielding
   -> 'r]
 
 (** [spawn s ~f] spawns a new concurrent task to execute [f scope concurrent_ctx conc]
@@ -583,7 +588,8 @@ module (Task @@ nonportable) : sig @@ portable
       returned by [f i], where [i] is the 0-based index of the task, waits for them all to
       return, and returns an iarray containing the results. *)
   val spawn_join_n
-    :  'concurrent_ctx concurrent @ local p
+    : ('a : value mod non_float).
+    'concurrent_ctx concurrent @ local p
     -> 'scope_ctx @ portable
     -> n:int
     -> f:
@@ -641,14 +647,15 @@ module Scheduler : sig
 
   (** [Scheduler.t] is the type representing a handle to a concurrent scheduler. A handle
       to the scheduler allows spawning unstructured concurrent tasks. *)
-  type 'ctx t : value mod aliased contended non_float = 'ctx scheduler
+  type 'ctx t : value mod aliased contended non_float unyielding = 'ctx scheduler
 
   type packed = T : 'ctx t -> packed [@@unboxed]
 
   (** [create ~spawn] creates a new scheduler with the given spawn function. *)
   val%template create
     : 'concurrent_ctx.
-    spawn:('resource 'scope_ctx. ('resource, 'scope_ctx, 'concurrent_ctx) spawn_fn) @ l p
+    spawn:('resource 'scope_ctx. ('resource, 'scope_ctx, 'concurrent_ctx) spawn_fn)
+    @ l p unyielding
     -> 'concurrent_ctx t @ l p
   [@@alloc __ @ l = (heap_global, stack_local)] [@@mode p = (portable, nonportable)]
 

@@ -42,7 +42,7 @@ val spawn_into
     implementation of awaiting *)
 val in_scope
   :  Await.t @ local
-  -> 'a Scope.t @ local
+  -> 'a Concurrent.Scope.t @ local
   -> ('a, unit) Concurrent.Spawn.t @ local portable
 
 module Expert = Multicore

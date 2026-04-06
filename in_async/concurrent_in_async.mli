@@ -52,7 +52,7 @@ val scheduler
 val spawn_deferred
   :  ('scope_ctx, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Spawn.t @ local
   -> f:
-       ('scope_ctx Scope.t @ local
+       ('scope_ctx Concurrent.Scope.t @ local
         -> Capsule.Initial.k Capsule.Access.boxed @ local
         -> Capsule.Initial.k Capsule.Access.boxed Concurrent.t @ local
         -> unit Deferred.t)

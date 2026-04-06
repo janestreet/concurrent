@@ -1,6 +1,6 @@
 open Base
 open Await
-module Scope = Scope
+module Scope = Await.Scope
 
 type 'resource spawn_result =
   | Spawned
@@ -32,7 +32,7 @@ and 'concurrent_ctx concurrent =
 [@@deriving fields ~getters]
 
 and 'ctx scheduler =
-  { spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn }
+  { spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn @@ unyielding }
 [@@unboxed]
 
 and ('scope_ctx, 'concurrent_ctx) spawn =

@@ -15,15 +15,15 @@ let rec spawn : type r a. (r, a, unit) Concurrent.Scheduler.spawn_fn =
         (* Always record backtraces in concurrent threads *)
         Stdlib.Printexc.record_backtrace true;
         Or_null.iter name ~f:Thread.set_current_thread_name;
-        Scope.Token.use token ~f:(fun terminator scope ->
+        Concurrent.Scope.Token.use token ~f:(fun terminator scope ->
           with_blocking terminator ~f:(fun [@inline] c -> fn scope () c r [@nontail])
           [@nontail])
         [@nontail])
-      ({ many = Scope.add scope }, resource)
+      ({ many = Concurrent.Scope.add scope }, resource)
   with
   | Spawned -> Spawned
   | Failed (({ many = token }, r), exn, bt) ->
-    Scope.Token.drop token;
+    Concurrent.Scope.Token.drop token;
     Failed (r, exn, bt)
 
 and[@inline] create await = exclave_
@@ -36,7 +36,11 @@ and[@inline] with_blocking
   Terminator.t @ local -> f:(unit Concurrent.t @ local portable -> 'r) @ local once -> 'r
   =
   fun terminator ~f ->
-  f (create (Await_blocking.await (Terminator.Expert.globalize terminator))) [@nontail]
+  f
+    (create
+       (Await.Expert.create
+          ~sync:Sync.blocking
+          ~terminator:(Terminator.Expert.globalize terminator))) [@nontail]
 ;;
 
 let scheduler = (Concurrent.Scheduler.create [@mode portable]) ~spawn
