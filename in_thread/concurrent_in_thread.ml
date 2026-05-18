@@ -2,7 +2,7 @@ open Base
 open Await
 module Expert = Multicore
 
-let rec spawn : type r a. (r, a, unit) Concurrent.Scheduler.spawn_fn =
+let rec spawn : type (r : value_or_null) a. (r, a, unit) Concurrent.Scheduler.spawn_fn =
   fun scope #{ fn; name; affinity } resource ->
   let spawn =
     match affinity with

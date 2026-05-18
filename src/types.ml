@@ -2,7 +2,7 @@ open Base
 open Await
 module Scope = Await.Scope
 
-type 'resource spawn_result =
+type ('resource : value_or_null) spawn_result =
   | Spawned
   | Failed of 'resource * exn @@ aliased many * Backtrace.t @@ aliased many
 
@@ -12,7 +12,7 @@ type 'f task =
    ; affinity : int or_null
    }
 
-type ('resource, 'scope_ctx, 'concurrent_ctx) spawn_fn =
+type ('resource : value_or_null, 'scope_ctx, 'concurrent_ctx) spawn_fn =
   'scope_ctx Scope.t @ local
   -> ('scope_ctx Scope.Task_handle.t @ local unique
       -> ('concurrent_ctx @ local
@@ -32,7 +32,9 @@ and 'concurrent_ctx concurrent =
 [@@deriving fields ~getters]
 
 and 'ctx scheduler =
-  { spawn : 'resource 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn @@ unyielding }
+  { spawn : ('resource : value_or_null) 'scope_ctx. ('resource, 'scope_ctx, 'ctx) spawn_fn
+    @@ unyielding
+  }
 [@@unboxed]
 
 and ('scope_ctx, 'concurrent_ctx) spawn =

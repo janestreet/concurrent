@@ -2,27 +2,29 @@ open! Base
 open Async
 open Await
 
+let send_exn = Capsule.Initial.Data.wrap Monitor.send_exn
+
 [@@@alert "-experimental_runtime5"]
 
 let scheduler ?monitor ?priority () =
   let open struct
     type spawn =
       { spawn :
-          'r 'a.
+          ('r : value_or_null) 'a.
           ('r, 'a, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Scheduler.spawn_fn
         @@ unyielding
       }
     [@@unboxed]
   end in
   let rec spawn
-    : type r a.
+    : type (r : value_or_null) a.
       (r, a, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Scheduler.spawn_fn
     =
     fun scope #{ fn; affinity = _; name = _ } r ->
     let token = Concurrent.Scope.add scope in
     schedule ?monitor ?priority (fun () ->
       try
-        Await_in_async.Expert.with_await Terminator.never ~f:(fun await ->
+        Await_in_async.Expert.with_await Terminator.unkillable ~f:(fun await ->
           Concurrent.Scope.Token.use token ~f:(fun terminator task_handle ->
             let spawn = (Capsule.Initial.Data.wrap [@mode local]) { spawn } in
             Capsule.Expert.Password.with_current Capsule.Initial.access (fun password ->
@@ -30,7 +32,11 @@ let scheduler ?monitor ?priority () =
                 (Concurrent.Scheduler.create [@alloc stack] [@mode portable])
                   ~spawn:
                     (fun
-                      (type s b) (scope : b Concurrent.Scope.t @ local) task (r : s) ->
+                      (type (s : value_or_null) b)
+                      (scope : b Concurrent.Scope.t @ local)
+                      task
+                      (r : s)
+                    ->
                     Capsule.Expert.access ~password ~f:(fun access ->
                       let { spawn } = Capsule.Expert.Data.Local.unwrap ~access spawn in
                       spawn scope task r [@nontail])
@@ -76,6 +82,33 @@ let[@inline] spawn_deferred s ~f =
   [@nontail]
 ;;
 
+let spawn_join ?(monitor = Monitor.current ()) sched ~f =
+  let scope =
+    let execution_context =
+      Async_kernel_scheduler.current_execution_context () |> Capsule.Initial.Data.wrap
+    in
+    let monitor = { aliased = monitor } |> Capsule.Initial.Data.wrap in
+    Concurrent.Scope.Global.create () ~on_exit:(fun _scope maybe_exn ->
+      Or_null.iter maybe_exn ~f:(fun (exn, bt) ->
+        Async_kernel_scheduler.portable_enqueue_job
+          execution_context
+          (Capsule.Data.create (fun () : _ ->
+             fun #(access, { aliased = monitor }) ->
+             let send_exn = Capsule.Data.unwrap ~access send_exn in
+             send_exn monitor exn ~backtrace:(`This bt)))
+          monitor))
+  in
+  let ivar = Ivar.Portable.create () in
+  Concurrent.Scheduler.spawn
+    sched
+    scope
+    (Concurrent.task (fun _ ctx concurrent ->
+       let result = f ctx concurrent in
+       Ivar.Portable.fill_if_empty ivar { portended = result }));
+  Ivar.Portable.read ivar
+  |> Deferred.map ~f:(fun { portended } -> Modes.Contended.cross portended)
+;;
+
 module Portable = struct
   let with_await = Capsule.Initial.Data.wrap Await_in_async.Expert.with_await
   let monitor_send_exn = Capsule.Initial.Data.wrap Monitor.send_exn
@@ -86,7 +119,7 @@ module Portable = struct
       Async_kernel_scheduler.current_execution_context () |> Capsule.Initial.Data.wrap
     in
     let rec spawn
-      : type r a.
+      : type (r : value_or_null) a.
         (r, a, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Scheduler.spawn_fn
       =
       fun scope #{ fn; affinity = _; name = _ } r ->
@@ -97,7 +130,7 @@ module Portable = struct
            fun #(access, token) ->
            let with_await = Capsule.Data.unwrap ~access with_await in
            try
-             with_await Terminator.never ~f:(fun await ->
+             with_await Terminator.unkillable ~f:(fun await ->
                Concurrent.Scope.Token.use token ~f:(fun terminator task_handle ->
                  let concurrent =
                    (Concurrent.create [@mode portable])

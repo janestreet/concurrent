@@ -22,7 +22,7 @@ depends: [
   "base-threads"
   "dune"             {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
 synopsis: "Abstract interface to concurrency in OxCaml"
 description: "
 [Concurrent] is a library that provides an abstract interface to concurrency in
