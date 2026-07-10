@@ -528,10 +528,10 @@ module Task = struct
     spawn
       s
       #{ Task0.fn =
-           (let fn = Capsule.Expert.Data.wrap_once ~access fn in
+           (let fn = Capsule.Prim.Data.wrap_once ~access fn in
             fun [@inline] ctx access conc ->
               let fn =
-                Capsule.Expert.Data.unwrap_once ~access:(Capsule.Access.unbox access) fn
+                Capsule.Prim.Data.unwrap_once ~access:(Capsule.Access.unbox access) fn
               in
               fn ctx access conc)
        ; affinity
@@ -554,9 +554,9 @@ let spawn_daemon s ~f = Task.spawn_daemon s (task f)
 let spawn_daemon' s ~f = Task.spawn_daemon' s (task f)
 
 let spawn_nonportable ~access s ~f =
-  let f = Capsule.Expert.Data.wrap_once ~access f in
+  let f = Capsule.Prim.Data.wrap_once ~access f in
   spawn s ~f:(fun ctx access conc ->
-    let f = Capsule.Expert.Data.unwrap_once ~access:(Capsule.Access.unbox access) f in
+    let f = Capsule.Prim.Data.unwrap_once ~access:(Capsule.Access.unbox access) f in
     f ctx access conc [@nontail])
   [@nontail]
 ;;

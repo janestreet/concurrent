@@ -4,8 +4,6 @@ open Await
 
 let send_exn = Capsule.Initial.Data.wrap Monitor.send_exn
 
-[@@@alert "-experimental_runtime5"]
-
 let scheduler ?monitor ?priority () =
   let open struct
     type spawn =
@@ -27,7 +25,7 @@ let scheduler ?monitor ?priority () =
         Await_in_async.Expert.with_await Terminator.unkillable ~f:(fun await ->
           Concurrent.Scope.Token.use token ~f:(fun terminator task_handle ->
             let spawn = (Capsule.Initial.Data.wrap [@mode local]) { spawn } in
-            Capsule.Expert.Password.with_current Capsule.Initial.access (fun password ->
+            Capsule.Prim.Password.with_current Capsule.Initial.access (fun password ->
               let scheduler =
                 (Concurrent.Scheduler.create [@alloc stack] [@mode portable])
                   ~spawn:
@@ -37,8 +35,8 @@ let scheduler ?monitor ?priority () =
                       task
                       (r : s)
                     ->
-                    Capsule.Expert.access ~password ~f:(fun access ->
-                      let { spawn } = Capsule.Expert.Data.Local.unwrap ~access spawn in
+                    Capsule.Prim.access ~password ~f:(fun access ->
+                      let { spawn } = Capsule.Prim.Data.Local.unwrap ~access spawn in
                       spawn scope task r [@nontail])
                     [@nontail])
               in
@@ -126,7 +124,7 @@ module Portable = struct
       let token = Concurrent.Scope.add scope in
       Async_kernel_scheduler.portable_enqueue_job
         execution_context
-        (Capsule.Expert.Data.create_once (fun () : _ ->
+        (Capsule.Prim.Data.create_once (fun () : _ ->
            fun #(access, token) ->
            let with_await = Capsule.Data.unwrap ~access with_await in
            try
@@ -145,7 +143,7 @@ module Portable = struct
              (Capsule.Data.unwrap ~access monitor_send_exn)
                ((Capsule.Data.unwrap ~access monitor_current) ())
                exn))
-        (Capsule.Expert.Data.create_unique (fun () -> token));
+        (Capsule.Prim.Data.create_unique (fun () -> token));
       Spawned
     in
     (Concurrent.Scheduler.create [@mode portable]) ~spawn

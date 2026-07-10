@@ -96,29 +96,30 @@ module Portable : sig
             Concurrent_in_async.schedule_with_concurrent
               Terminator.unkillable
               ~f:(fun conc ->
-                Concurrent.with_scope
-                  conc
-                  (* Use the scheduler as our scope context to avoid allocating a closure *)
-                  scheduler
-                  ~f:(fun s ->
-                    (* Spawn a thread, given the handle to the scheduler *)
-                    Concurrent.spawn
-                      (Concurrent_in_thread.spawn_into s)
-                      ~f:(fun scope _ _ ->
-                        (* Recover the scheduler *)
-                        let scheduler = Concurrent.Scope.context scope in
-                        (* We can now spawn tasks into the async scheduler *)
-                        Concurrent.Scheduler.spawn scheduler scope ~f:(fun _ access _ ->
-                          (* Those tasks get access to the initial capsule, which they can
-                             use to call functions that use async *)
-                          let print_endline =
-                            Capsule.Data.unwrap
-                              ~access:(Capsule.Access.unbox access)
-                              print_endline
-                          in
-                          print_endline "Hello from async!")
-                        [@nontail])
-                    [@nontail])))
+                Concurrent.with_scope conc () ~f:(fun s ->
+                  (* Spawn a thread, given the handle to the scheduler *)
+                  Concurrent.spawn
+                    (Concurrent_in_thread.spawn_into s)
+                    ~f:(fun scope _ conc ->
+                      (* Construct a Concurrent.Spawn.t that spawns using the async
+                         scheduler into the current scope *)
+                      let spawn =
+                        Concurrent.Spawn.with_scheduler
+                          (Concurrent.Spawn.create conc ~scope)
+                          scheduler
+                      in
+                      (* We can now spawn tasks into the async scheduler *)
+                      Concurrent.spawn spawn ~f:(fun _ access _ ->
+                        (* Those tasks get access to the initial capsule, which they can
+                           use to call functions that use async *)
+                        let print_endline =
+                          Capsule.Data.unwrap
+                            ~access:(Capsule.Access.unbox access)
+                            print_endline
+                        in
+                        print_endline "Hello from async!")
+                      [@nontail])
+                  [@nontail])))
         ;;
       ]} *)
   val scheduler
